@@ -178,6 +178,18 @@ gh pr list --state all --limit 200 --json number,title,body \
 
 Write `none — <reason>` when a PR genuinely has no card (release promotion, revert, tooling). An empty line is indistinguishable from a forgotten one.
 
+**What goes after `Card:` depends on the PM system, not on the factory.** Write the board's OWN reference, as one token, so the PM tool's own GitHub integration links the PR with no factory involved. Take the PM from `.devhawk-work.json` (`pm`), or from the card URL:
+
+| PM | `Card:` value | What links it without the factory |
+|---|---|---|
+| Asana | the task URL (`https://app.asana.com/…/task/<gid>`) | Asana's GitHub integration attaches a PR whose description carries the task URL |
+| Linear | the issue key (`ENG-123`), never the issue's UUID | Linear's GitHub integration links on the key. Also put the key in the branch name or the PR title, which it always reads |
+| Azure DevOps (Azure Boards) | `AB#123` | The Azure Boards app for GitHub links `AB#<id>` in a PR title or description |
+| Jira | the issue key (`ABC-123`) | Jira's GitHub integration links on the key in the branch, title or description |
+| no PM / no card | `none — <reason>` | nothing to link |
+
+Each integration only acts if the team installed it. The line is worth writing either way: it is how anyone finds the PR's card months later, and a DevHawk factory watching the repo, when there is one, resolves every form above to its card.
+
 Show the PR URL to the builder.
 
 ## Step 3.5: Replay captured audit findings as PR comments
@@ -199,14 +211,14 @@ Every PR should correspond to a PM card so the board reflects reality. This step
 
 ### 4a. Find the active card
 
-Check for `.devhawk-work.json`. If it exists with a `cardId`/`cardUrl`, use that.
+Check for `.devhawk-work.json`. If it exists with a `cardId`/`cardUrl`, use that, and its `pm` field to pick the `Card:` form (Step 3).
 
 ### 4b. No active card → ask, don't skip
 
 If `.devhawk-work.json` doesn't exist or has no active card:
 
 > No active PM card found. Which card does this PR represent?
-> 1. Provide a card ID or URL (Asana / Linear) — I'll move it to READY FOR REVIEW
+> 1. Provide a card ID or URL (Asana / Linear / Azure DevOps / Jira) — I'll move it to READY FOR REVIEW
 > 2. Create a new card now — invoke `add-card` skill (in BACKLOG, then transition through TODO → WIP → READY FOR REVIEW)
 > 3. Skip PM tracking for this PR (rare — explain why in PR body)
 
@@ -240,6 +252,7 @@ Use the canonical section/state name (board convention — pm-kit's `asana-conve
   PUT /api/v3/stories/<id>  {"workflow_state_id": <state_id>}
   ```
 - **Linear:** transition issue to **In Progress** for a draft, **In Review** once undrafted, via Linear MCP.
+- **Azure DevOps:** move the work item via the Azure DevOps MCP, to the board column the team uses for active work (draft) or review (ready). Columns are per-board, so read the board's columns rather than assuming names. With no ADO MCP connected, say so and skip the move, as for Asana.
 
 If the card is in INBOX or BACKLOG (skipped over TODO/WIP), surface that to the builder before moving — usually means the card lifecycle was bypassed and they may want to confirm the right card.
 
@@ -266,4 +279,4 @@ The `Card:` line goes in at creation (Step 3) — this step only confirms it lan
 gh pr view --json body -q .body | head -1   # expect: Card: <url>  (or "none — <reason>")
 ```
 
-If it's missing, `gh pr edit --body` it in now. This bidirectional link is what makes `card-done` work cleanly after merge, and it's the only durable way to match a PR to its card months later.
+If it's missing, add it now with `gh pr edit --body`. If that fails (some repos still error on the retired Projects (classic) GraphQL API), PATCH the REST API instead: `gh api -X PATCH repos/<owner>/<repo>/pulls/<N> -F body=@<file>`. This bidirectional link is what makes `card-done` work cleanly after merge, and it's the only durable way to match a PR to its card months later.
