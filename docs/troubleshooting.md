@@ -44,7 +44,7 @@ path to match yours):
 Add the marketplace first, then install:
 
 ```
-/plugin marketplace add fractionwork/devhawk-tools
+/plugin marketplace add devhawkai/devhawk-tools
 /plugin install pm-kit@devhawk-tools
 ```
 

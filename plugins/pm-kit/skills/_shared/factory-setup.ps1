@@ -36,7 +36,7 @@
 # ---------------------------------------------------------------------------
 #
 # Usage - sets up pm-kit and ship-kit from the public devhawk-tools marketplace:
-#   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/fractionwork/devhawk-tools/main/plugins/pm-kit/skills/_shared/factory-setup.ps1)))
+#   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/devhawkai/devhawk-tools/main/plugins/pm-kit/skills/_shared/factory-setup.ps1)))
 #
 #   .\factory-setup.ps1 -Check   # report state, change nothing
 #   .\factory-setup.ps1 -Yes     # no questions; optional sign-ins skipped
@@ -45,7 +45,7 @@
 #   FACTORY_SETUP_YES=1, FACTORY_SETUP_CHECK=1
 
 $script:NODE_MAJOR = 24
-$script:PUBLIC_MARKETPLACE = 'fractionwork/devhawk-tools'
+$script:PUBLIC_MARKETPLACE = 'devhawkai/devhawk-tools'
 $script:MARKETPLACE = $script:PUBLIC_MARKETPLACE
 $script:MARKETPLACE_NAME = 'devhawk-tools'
 # This copy sets up the public plugins only. `-Role local` is accepted (the

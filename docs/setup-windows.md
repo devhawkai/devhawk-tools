@@ -36,7 +36,7 @@ administrator".
 Paste this whole line:
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/fractionwork/devhawk-tools/main/plugins/pm-kit/skills/_shared/factory-setup.ps1))) -Role local
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/devhawkai/devhawk-tools/main/plugins/pm-kit/skills/_shared/factory-setup.ps1))) -Role local
 ```
 
 It installs everything the plugins need — Git for Windows, Node.js, Python, the GitHub tool, Claude
@@ -105,7 +105,7 @@ Next: [using pm-kit](pm-kit.md) · [using ship-kit](ship-kit.md) ·
 4. For ship-kit with GitHub: `winget install GitHub.cli`, then `gh auth login`.
 5. In Claude Code:
    ```
-   /plugin marketplace add fractionwork/devhawk-tools
+   /plugin marketplace add devhawkai/devhawk-tools
    /plugin install pm-kit@devhawk-tools
    /plugin install ship-kit@devhawk-tools
    ```

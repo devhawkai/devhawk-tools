@@ -47,7 +47,7 @@ Click **Start**, type `Ubuntu`, and open it. Everything from here on happens in 
 Paste this whole line:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/fractionwork/devhawk-tools/main/plugins/pm-kit/skills/_shared/factory-setup.sh -o /tmp/devhawk-setup.sh && bash /tmp/devhawk-setup.sh --role local
+curl -fsSL https://raw.githubusercontent.com/devhawkai/devhawk-tools/main/plugins/pm-kit/skills/_shared/factory-setup.sh -o /tmp/devhawk-setup.sh && bash /tmp/devhawk-setup.sh --role local
 ```
 
 It installs everything the plugins need — Node.js, Python, the GitHub tool, Claude Code itself —
@@ -120,7 +120,7 @@ Next: [using pm-kit](pm-kit.md) · [using ship-kit](ship-kit.md) ·
    and run `gh auth login`.
 5. In Claude Code:
    ```
-   /plugin marketplace add fractionwork/devhawk-tools
+   /plugin marketplace add devhawkai/devhawk-tools
    /plugin install pm-kit@devhawk-tools
    /plugin install ship-kit@devhawk-tools
    ```

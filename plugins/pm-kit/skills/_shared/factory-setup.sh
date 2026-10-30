@@ -22,7 +22,7 @@ set -uo pipefail
 NVM_VERSION="v0.40.6"
 NODE_MAJOR="24"
 PYTHON_MIN="3.10"
-PUBLIC_MARKETPLACE="fractionwork/devhawk-tools"
+PUBLIC_MARKETPLACE="devhawkai/devhawk-tools"
 DEVHAWK_HOME="${DEVHAWK_HOME:-$HOME/.devhawk}"
 ENV_FILE="$DEVHAWK_HOME/env"
 

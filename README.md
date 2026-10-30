@@ -38,7 +38,7 @@ step, and one command does most of the work for you.
 Already have Claude Code? You can install the plugins directly. Start Claude Code and type:
 
 ```
-/plugin marketplace add fractionwork/devhawk-tools
+/plugin marketplace add devhawkai/devhawk-tools
 /plugin install pm-kit@devhawk-tools
 /plugin install ship-kit@devhawk-tools
 ```
@@ -67,7 +67,7 @@ over once:
 
 ```
 /plugin marketplace remove pm-skills
-/plugin marketplace add fractionwork/devhawk-tools
+/plugin marketplace add devhawkai/devhawk-tools
 /plugin install pm-kit@devhawk-tools
 ```
 
