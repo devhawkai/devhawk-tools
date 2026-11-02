@@ -21,7 +21,7 @@ You are implementing a feature on a DevHawk stack project. Before writing any co
 ### PM card awareness
 
 Check for `.devhawk-work.json` in the project root. If it exists with an active card:
-- Note the card ID, PM system, and card URL
+- Note the card ID, PM system, and card URL, and its `acceptanceCriteria` (Step 1 turns them into tests)
 - **After each git commit**, post a comment on the PM card with the commit message + key files changed:
   - **Asana:** `add_comment(task_id, text: "Commit: [message]\nFiles: [list]")`
   - **Jira:** `addCommentToJiraIssue(issueIdOrKey, commentBody: "Commit: [message]\nFiles: [list]")`
@@ -44,7 +44,39 @@ Without this line every `$FACTORY_*` below is unset. A verb this repo does not
 define resolves to a command that fails loudly rather than to the empty string,
 so a missing toolchain declaration surfaces here instead of at deploy.
 
-### 1. Schema (if new data)
+### 1. Acceptance tests first
+
+Before any implementation code, turn the acceptance criteria into tests. Tests written after the
+code, from the code, check what was built; these check what was asked for. Misreading the ask and
+missing an edge case are the two most common ways generated code goes wrong, and this step is
+aimed at both.
+
+Criteria come from the first of these that exists, used **verbatim**:
+
+1. `acceptanceCriteria` in `.devhawk-work.json`
+2. the card itself, when there is a card but no context file
+3. the user's request
+
+If there are none, ask the user what done looks like. **Never write the criteria yourself**: a
+criterion the agent invented is one it then marks itself as passing.
+
+- [ ] One test per criterion, named after it, asserting the behaviour it describes (what the
+      action returns, what is stored, what the user sees), not how the code does it
+- [ ] The edge cases each criterion implies, where they apply: boundary values, empty and
+      maximum input, unauthenticated, another tenant's or user's record, an illegal status
+      transition, a double submit
+- [ ] Run them and confirm they fail **for the right reason**: the behaviour is missing. A module
+      the feature will create not existing yet is a fine reason; a typo is not. A test that passes
+      before the feature exists tests nothing.
+
+Put them where docs/testing-patterns.md says (`tests/unit/`, `tests/integration/`, `tests/e2e/`).
+Then implement until they pass.
+
+**When a test fails later, the criterion decides.** Fix the code if the code is wrong. Change a
+test only when it misread the criterion, and say so in the PR. Never weaken, skip or delete an
+assertion to get green.
+
+### 2. Schema (if new data)
 - [ ] Define table in `lib/db/schema/[domain].ts`
 - [ ] **Org variant:** include `organizationId` if tenant-scoped (most app tables). **Solo variant:** no `organizationId` — see `**Auth variant:**` in CLAUDE.md.
 - [ ] Export from `lib/db/schema/index.ts`
@@ -70,7 +102,7 @@ await db.insert(role).values(rows).onConflictDoNothing({
 
 To change a default value in code, ship a Drizzle migration with an explicit `UPDATE ... WHERE ...` clause. The migration is one-shot, audited via the migrations history, and runs before the seed. If you genuinely need a one-off backfill, write a separate script (e.g. `scripts/backfill-foo.ts`) and run it manually via `doctl apps console` — don't put it in `seed.ts`.
 
-### 2. Server logic
+### 3. Server logic
 - [ ] Server Actions for user-triggered mutations
 - [ ] Return `{ success, error?, data? }` — never throw
 - [ ] Validate ALL input with Zod schemas
@@ -78,14 +110,14 @@ To change a default value in code, ship a Drizzle migration with an explicit `UP
 - [ ] API routes only for webhooks or external consumers
 - Reference: docs/conventions.md
 
-### 3. Background jobs (if async work)
+### 4. Background jobs (if async work)
 - [ ] Add queue in `lib/jobs/queues.ts`
 - [ ] Create processor in `lib/jobs/processors/`
 - [ ] Register worker in `lib/jobs/worker.ts`
 - [ ] Enqueue from Server Action or API route
 - Reference: docs/background-jobs.md
 
-### 4. UI
+### 5. UI
 - [ ] Server Component by default (data fetching happens here)
 - [ ] Client Component only when hooks or event handlers needed
 - [ ] Use shadcn/ui primitives from `components/ui/` as foundation
@@ -96,17 +128,19 @@ To change a default value in code, ship a Drizzle migration with an explicit `UP
 - Use the `frontend-design` skill for pages or components that are user-facing and visually significant
 - Reference: docs/conventions.md (UI design principles section)
 
-### 5. Auth (if role-based or protected)
+### 6. Auth (if role-based or protected)
 - [ ] Session check in Server Component or Server Action
 - [ ] **Org variant:** organization check for tenant-scoped features. **Solo variant:** role check (`session.user.role === "admin"`) for admin-gated features.
 - [ ] Middleware route protection if entire route group is protected
 - Reference: docs/auth-patterns.md
 
-### 6. Tests (mandatory)
+### 7. Complete the tests (mandatory)
 
-Invoke the `test-gen` skill to generate tests for the code written in Steps 1-5. Do NOT skip this step or leave it as empty stubs.
+Invoke the `test-gen` skill. Do NOT skip this step or leave it as empty stubs.
 
-`test-gen` reads the diff, categorizes changes, and generates:
+`test-gen` reads the acceptance criteria and the diff. It confirms every criterion has a test
+from Step 1 (and writes any that are missing), then covers what changed that no criterion
+reaches:
 - **Unit tests** for new schemas, validators, pure logic
 - **Integration tests** for new Server Actions, DB queries
 - **E2E tests** for critical user flows (auth, core workflow, payment — not every page)
@@ -116,7 +150,7 @@ After test-gen completes, verify:
 - [ ] `$FACTORY_TEST_E2E` passes (if E2E specs were generated)
 - Reference: docs/testing-patterns.md
 
-### 7. Verify
+### 8. Verify
 - [ ] `$FACTORY_TYPECHECK` passes
 - [ ] `$FACTORY_LINT` passes
 - [ ] `$FACTORY_TEST` passes
@@ -126,11 +160,12 @@ After test-gen completes, verify:
 ## Common patterns
 
 ### Adding a CRUD feature
-1. Schema → migration → Zod schemas
-2. Server Actions: create, update, delete (each validates input, checks auth)
-3. Server Component: list page with data fetching
-4. Client Component: form with `useActionState`
-5. Tests: schema validation, CRUD operations, E2E flow
+1. Acceptance tests from the criteria, failing: each CRUD operation's behaviour, plus invalid input, no session and another tenant's record
+2. Schema → migration → Zod schemas
+3. Server Actions: create, update, delete (each validates input, checks auth)
+4. Server Component: list page with data fetching
+5. Client Component: form with `useActionState`
+6. `test-gen` to complete coverage: schema validation, the E2E flow
 
 ### Adding an AI feature
 1. Define tools with Zod parameter schemas in `lib/ai/`

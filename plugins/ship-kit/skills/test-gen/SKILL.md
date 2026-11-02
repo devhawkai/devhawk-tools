@@ -1,9 +1,10 @@
 ---
 name: test-gen
 description: >
-  Generate and run tests for recently written feature code. Reads the diff,
-  categorizes changes, and produces unit tests (Vitest), integration tests
-  (Vitest + DB), and E2E tests (Playwright) following DevHawk conventions.
+  Generate and run tests for recently written feature code. Writes one test per
+  acceptance criterion of the active card, then reads the diff, categorizes
+  changes, and produces unit tests (Vitest), integration tests (Vitest + DB),
+  and E2E tests (Playwright) following DevHawk conventions.
   Triggers on "write tests", "generate tests", "test this feature", "qa",
   "add tests", "test-gen", or any request to create tests for recent work.
 
@@ -12,6 +13,10 @@ description: >
 # Test Generation
 
 Generate tests for recently changed code. Read docs/testing-patterns.md before writing any test.
+
+Tests check what was **asked for**, not only what was built. A suite derived from the diff alone
+confirms the code does what the code does. So the acceptance criteria come first, and the diff
+fills in the rest.
 
 ## Step 0: Resolve the stack
 
@@ -24,12 +29,26 @@ The file-pattern table and the code samples in this skill are Vitest/Playwright
 against a Next.js layout; emitting them on another stack produces tests that
 cannot run. Instead: read the project's own `docs/testing-patterns.md` and its
 existing tests, mirror those conventions, and keep only the stack-independent
-discipline from this skill — the unit / integration / e2e split, what to always
-test and what never to test, and running the suite before handing back.
+discipline from this skill — a test per acceptance criterion, the unit /
+integration / e2e split, what to always test and what never to test, and running
+the suite before handing back.
 
-The run commands resolve either way, so Step 3 below is correct on any stack.
+The run commands resolve either way, so Step 5 below is correct on any stack.
 
-## Step 1: Detect what changed
+## Step 1: Read the acceptance criteria
+
+Criteria come from the first of these that exists, used **verbatim**:
+
+1. `--criteria=<file>`: one criterion per line, blank lines and `- ` bullets ignored
+2. `acceptanceCriteria` in `.devhawk-work.json` (written by `next-task`)
+3. the user's request
+
+If there are none (or `acceptanceCriteriaSource` is `none`), say so before generating anything:
+"There are no acceptance criteria, so these tests can only check the code against itself." Ask
+whether the user wants to give some. **Never write criteria yourself**: a criterion the agent
+invented is one it then marks itself as passing.
+
+## Step 2: Detect what changed
 
 ```bash
 BASE=$(git rev-parse --verify origin/develop 2>/dev/null && echo develop || echo main)
@@ -48,7 +67,22 @@ Categorize each changed file:
 | `components/**/*.tsx` | UI component | Skip — don't test shadcn/ui internals |
 | `lib/ai/*.ts` | AI tool/agent | Unit (Vitest, mock provider) |
 
-## Step 2: Generate tests by category
+## Step 3: Generate tests
+
+### Acceptance criteria → one test each
+
+Do these first. For each criterion:
+
+- Look for an existing test that already asserts it (`feature-build` writes them before the code).
+  Keep it; don't write a duplicate.
+- Otherwise write one, named after the criterion, that asserts the behaviour it describes: what
+  the action returns, what is stored, what the user sees. Choose unit, integration or E2E by
+  where that behaviour is observable, using the category table above.
+- Add the edge cases the criterion implies, where they apply: boundary values, empty and maximum
+  input, unauthenticated, another tenant's or user's record, an illegal status transition, a
+  double submit.
+
+Then generate the category tests below for what changed that no criterion covers.
 
 ### Schema → Unit test
 
@@ -105,7 +139,7 @@ test("[flow description]", async ({ page }) => {
 
 Use the **Playwright MCP** (if available) to interact with the running app and derive selectors from real page state instead of guessing. Start the app first: `$FACTORY_DEV`.
 
-## Step 3: Write test files
+## Step 4: Write test files
 
 Follow naming conventions from docs/testing-patterns.md:
 - `tests/unit/[module].test.ts`
@@ -114,25 +148,42 @@ Follow naming conventions from docs/testing-patterns.md:
 - Describe: module or feature name
 - It: plain English starting with a verb
 
-## Step 4: Run tests
+## Step 5: Run tests
 
 ```bash
+eval "$FACTORY_TYPECHECK"  # the test files too: a mock with the wrong shape tests nothing
 eval "$FACTORY_TEST"       # unit + integration
 eval "$FACTORY_TEST_E2E"   # end-to-end (if specs were generated)
 ```
 
-If tests fail, fix them. Iterate until green. Common issues:
+Iterate until green, but **the criterion decides what to fix.** When a test fails, check its
+expectation against the criterion or the code's documented contract:
+
+- The code is wrong → fix the code.
+- The test misread the criterion → fix the test, and say which one and why in the report.
+- Never weaken, skip or delete an assertion just to get green. A test loosened until it passes
+  has stopped testing.
+
+Common issues that are neither:
 - Integration tests need the DB running (`docker compose up -d`)
 - E2E tests need the app running (`$FACTORY_DEV`)
 - Missing env vars in test context
 
-## Step 5: Report
+## Step 6: Report
 
+> **Acceptance criteria:**
+> | Criterion (verbatim) | Test |
+> |---|---|
+> | [criterion] | `[file] > [test name]` |
+>
 > **Tests generated:**
 > - Unit: [N] files, [N] test cases
 > - Integration: [N] files, [N] test cases
 > - E2E: [N] specs
 > All passing.
+
+A criterion with no passing test is not done: list it under the table as uncovered, and say why.
+Name any test you changed because it misread a criterion.
 
 If the active card (`.devhawk-work.json`) exists, comment on it: "Tests added: [N] unit, [N] integration, [N] E2E."
 

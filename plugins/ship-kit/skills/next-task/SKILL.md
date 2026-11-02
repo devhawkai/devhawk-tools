@@ -33,7 +33,7 @@ Read `.devhawk-work.json` (project root). If it exists and has an active card:
 
 AskUserQuestion — header: "In flight", options: "Continue" / "Pick new (park current)" / "Mark current done"
 
-"Continue" → skip to Step 8 (plan/build from existing card).
+"Continue" → skip to Step 8 (plan/build from existing card). If the context file has no `acceptanceCriteria` field (it was written before the field existed), run Step 5b first and add it.
 "Pick new" → warn the builder to finish one thing at a time. If they insist, stash the current card context.
 "Mark done" → invoke `card-done` flow, then continue to Step 3.
 
@@ -130,6 +130,27 @@ If nothing found in any tier, tell the builder: "Backlog is empty. Create new ca
 
 AskUserQuestion — header: "This one?", options: "Yes, start" / "Skip, show next" / "Show backlog"
 
+## Step 5b: Pin the acceptance criteria
+
+Take the card's acceptance criteria **verbatim** — one string per criterion, exactly as written
+on the card. They become the tests `feature-build` writes before any code, and `test-gen` and
+`uat-run` check against them later. A paraphrase changes what gets tested.
+
+If the card has no acceptance criteria (only a title, or a description with nothing checkable),
+**do not write them yourself.** A criterion the agent invented is one it then marks itself as
+passing. Say so and ask:
+
+> **[Card ID]** has no acceptance criteria, so the tests could only check the code against
+> itself. What does done look like?
+
+AskUserQuestion — header: "Criteria", options: "I'll add them to the card" / "I'll paste them here" / "Start without"
+
+- "I'll add them to the card" → wait, then re-read the card and take them from there.
+- "I'll paste them here" → use their words verbatim, one per line. Suggest adding them to the
+  card too, so the board stays the source of truth.
+- "Start without" → record none, and say plainly that the tests will only cover what the code
+  does, not what was asked for.
+
 ## Step 6: Assign + move to In Progress
 
 **Asana (top-level task):** assign, then move section — both via our MCP:
@@ -176,22 +197,28 @@ Save to `.devhawk-work.json`:
     "testing": "section-id",
     "done": "section-id"
   },
+  "acceptanceCriteria": ["...verbatim, one per criterion..."],
+  "acceptanceCriteriaSource": "card|builder|none",
   "startedAt": "2026-04-21T..."
 }
 ```
 
 `parentTaskId`: set to the epic/parent task ID if the selected card is a subtask. `null` if top-level. Used by `card-done` to reconcile with the parent when closing out (e.g. check if all subtasks of the epic are done → mark epic complete).
-```
+
+`acceptanceCriteria`: the strings pinned in Step 5b, unedited. `acceptanceCriteriaSource` is
+`card` when they came from the card, `builder` when the builder pasted them, and `none` (with an
+empty array) when they chose to start without. `feature-build`, `test-gen` and `uat-run` read
+them from here.
 
 ## Step 9: Plan the work
 
-Read the card details (description, acceptance criteria, subtasks). Derive implementation steps using the `feature-build` checklist pattern:
+Read the card details (description, acceptance criteria, subtasks). Derive implementation steps using the `feature-build` checklist pattern. Tests come first, one per acceptance criterion:
 
 > **Plan for [Card ID]: [Title]**
-> 1. Schema: [tables/fields if needed]
-> 2. Server: [actions/routes]
-> 3. UI: [pages/components]
-> 4. Tests: [what to test]
+> 1. Tests first: [one test per acceptance criterion, named after it] + edge cases: [the boundaries, empty or unauthorized cases, or illegal transitions the criteria imply]
+> 2. Schema: [tables/fields if needed]
+> 3. Server: [actions/routes]
+> 4. UI: [pages/components]
 
 AskUserQuestion — header: "Plan", options: "Build it" / "Change plan" / "Ask a question"
 
