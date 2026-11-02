@@ -83,8 +83,11 @@ if [ -n "$present" ]; then
     | fold -sw 68 | sed 's/^/        /' 
   # Everything NOT on the list — proof we are not touching it.
   if [ -d "$CLAUDE_HOME/skills" ]; then
+    # The `case` lives in a function, not inside $( ): macOS's /bin/bash 3.2
+    # cannot parse a case statement's `)` inside a command substitution.
+    not_installer_skill() { case " $SEED_SKILLS " in *" $1 "*) return 1 ;; esac; return 0; }
     keep=$(ls "$CLAUDE_HOME/skills" 2>/dev/null | while read -r d; do
-             case " $SEED_SKILLS " in *" $d "*) ;; *) echo "$d" ;; esac; done | tr '\n' ' ')
+             not_installer_skill "$d" && echo "$d"; done | tr '\n' ' ')
     [ -n "$keep" ] && say "keeping (not from the installer): $keep"
   fi
 else
