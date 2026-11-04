@@ -25,9 +25,26 @@ DEFAULT=$(gh repo view --json defaultBranchRef -q .defaultBranchRef.name 2>/dev/
 If `CURRENT` equals the default branch (or `main`/`master`), stop — PRs aren't created from the integration branch.
 
 **Target branch logic** (in order):
-1. If the builder explicitly named a target ("PR into main", "merge to staging") → use that
-2. Else target the repo's **default branch** (`$DEFAULT`)
-3. Fallback only when `$DEFAULT` can't be determined — probe the remote and take the first that exists, `staging > develop > main`:
+1. If the builder explicitly named a target ("PR into main", "merge to staging", "into feat/observability") → use that
+2. Else, if this branch was cut from a **feature branch** (see *Work that needs several PRs* below) → target that feature branch. Detect it, and confirm with the builder before using it:
+```bash
+# A remote feat/* branch this branch is built on. It counts when it has work
+# the default branch does not, or when it is exactly where this branch forked
+# (a feature branch with no pieces merged yet sits on the default's tip). A
+# stale feat/* that merged long ago is neither.
+FORK=$(git merge-base HEAD "origin/$DEFAULT")
+FEATURE=""
+for r in $(git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/feat/*'); do
+  [ "$r" = "origin/$CURRENT" ] && continue
+  git merge-base --is-ancestor "$r" HEAD 2>/dev/null || continue
+  if git merge-base --is-ancestor "$r" "origin/$DEFAULT" 2>/dev/null \
+     && [ "$(git rev-parse "$r")" != "$FORK" ]; then continue; fi
+  FEATURE="${r#origin/}"; break
+done
+```
+If `$FEATURE` is set, ask: *"This branch is built on `feat/<name>`. Open the PR into it, or into `$DEFAULT`?"* Always ask, never assume: a feature branch with no pieces merged yet is the same commit as the default's tip, so a branch cut from the default looks identical to one cut from it.
+3. Else target the repo's **default branch** (`$DEFAULT`)
+4. Fallback only when `$DEFAULT` can't be determined — probe the remote and take the first that exists, `staging > develop > main`:
 ```bash
 git fetch origin --prune
 for b in staging develop main; do
@@ -56,10 +73,25 @@ Refuse to create a PR for a branch whose merge-base with `origin/$TARGET` is not
 node ${CLAUDE_PLUGIN_ROOT}/skills/_shared/branch-base-check.mjs --strict --base="$TARGET"
 ```
 
-If the script exits non-zero, **stop and surface the message to the builder**. Do NOT call `gh pr create`. The script's output names the guessed source branch and gives the cherry-pick recipe. Two possible recoveries:
+If the script exits non-zero, **stop and surface the message to the builder**. Do NOT call `gh pr create`. The script's output names the branch this one shares its oldest commit with and gives the cherry-pick recipe. The recoveries, in order of preference:
 
-- **Re-base the work onto `origin/$TARGET`** — `git switch -c <new-branch> origin/$TARGET`, cherry-pick the relevant commits, push, run the skill again from the new branch.
-- **Stack intentionally** — if the dependency on the upstream PR is real and the merge order is coordinated, set `ALLOW_STACKED=1` for this run and target the PR base to the upstream branch (not `$TARGET`). Note the dependency in the PR body so reviewers know the merge order.
+- **The work is independent of that branch** — re-base it onto `origin/$TARGET`: `git switch -c <new-branch> origin/$TARGET`, cherry-pick the relevant commits, push, run the skill again from the new branch.
+- **The work depends on it, and both belong to one larger feature** — use a feature branch (below): target the PR at the feature branch, not at the other PR's branch.
+- **Stack intentionally** — last resort, when neither fits and the merge order is coordinated: set `ALLOW_STACKED=1` for this run, target the PR base at the upstream branch, and name the dependency in the PR body.
+
+### Work that needs several PRs: one feature branch, not a stack
+
+Split a large change into reviewable pieces on **one feature branch**, never as PRs stacked on each other's branches:
+
+1. Create `feat/<name>` from `origin/$DEFAULT` and push it. It holds no work of its own.
+2. Cut each piece from `origin/feat/<name>` and open its PR **into `feat/<name>`**. CI runs on every PR whatever its base, so each piece is reviewed and tested on its own.
+3. A piece that needs an earlier one waits for it to merge into `feat/<name>`, then updates from it: never cut a piece from another piece's branch.
+4. Merge pieces into the feature branch with merge commits, not squash, so each piece's commits stay findable. Merge `origin/$DEFAULT` into `feat/<name>` as it moves, so the final PR has no surprises.
+5. When the feature is complete, open **one PR from `feat/<name>` to `$DEFAULT`**. Every part of it has already been reviewed and tested; this PR is the decision to ship it.
+
+Why: a stack of PRs makes each review depend on every PR under it, and a squash merge underneath leaves the PRs above carrying commits that no longer exist on the base. A feature branch gives each piece one base that never disappears.
+
+For a piece, the branch-base check runs with `--base=feat/<name>` (Step 1.5 does this when `$TARGET` is the feature branch).
 
 Skip this step entirely if `${CLAUDE_PLUGIN_ROOT}/skills/_shared/branch-base-check.mjs` doesn't exist (older seed snapshot — surface a one-line note that the gate is missing and continue).
 

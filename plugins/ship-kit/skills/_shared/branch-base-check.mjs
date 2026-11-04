@@ -1,11 +1,15 @@
 #!/usr/bin/env node
-// branch-base-check — refuses (or warns about) branches whose merge-base
-// with origin/<base> is not on <base>'s first-parent trunk.
+// branch-base-check — refuses (or warns about) a branch cut from another
+// branch instead of from origin/<base>: one whose oldest commit ahead of the
+// base is also on another remote branch.
 //
-// Catches the failure mode where you branch from another open PR's tip
-// instead of develop. When the upstream PR squash-merges, your branch's
-// history points at a commit that no longer exists on develop's trunk,
-// and the next rebase becomes per-file conflict resolution.
+// Catches the failure mode where you branch from another open PR's tip. Your
+// PR then carries that PR's commits, and when the upstream squash-merges,
+// your branch points at commits that no longer exist on the base, so the
+// next rebase becomes per-file conflict resolution.
+//
+// Work that needs several PRs uses ONE feature branch instead (feat/<name>):
+// each piece is cut from it and checked with --base=feat/<name>.
 //
 // Usage:
 //   node scripts/branch-base-check.mjs              # warn-only (exit 0)
@@ -19,7 +23,6 @@
 
 import { execFileSync } from 'node:child_process';
 
-const FIRST_PARENT_DEPTH = 500;
 const INTEGRATION_BRANCHES = new Set(['main', 'develop', 'staging']);
 
 const args = process.argv.slice(2);
@@ -45,7 +48,10 @@ function gitSilent(args) {
   }
 }
 
-const head = gitSilent('rev-parse --abbrev-ref HEAD');
+// An ARRAY: `git()` uses execFileSync, which throws on a string argument list —
+// and gitSilent swallowed that throw as "detached HEAD", so this check exited 0
+// on every branch and never refused anything.
+const head = gitSilent(['rev-parse', '--abbrev-ref', 'HEAD']);
 if (!head || head === 'HEAD') {
   // Detached HEAD — nothing useful to check.
   process.exit(0);
@@ -85,33 +91,69 @@ if (mergeBase === headSha) {
   process.exit(0);
 }
 
-// Walk first-parent of origin/<base> back FIRST_PARENT_DEPTH commits.
-const trunk = gitSilent(['rev-list', '--first-parent', '-n', String(FIRST_PARENT_DEPTH), baseRef]);
-if (!trunk) {
+// THE TEST. Take the oldest commit this branch has that the base does not. If
+// another branch on origin also carries it, this branch was cut from that one:
+// it is stacked on it, and its PR would carry that branch's commits too.
+//
+// This catches the stack whether or not the PR underneath has merged. The old
+// test — "is the merge-base on the base's first-parent trunk?" — could not: a
+// branch cut from an open PR has an ordinary trunk commit as its merge-base
+// until that PR merges, and after a SQUASH merge it still does, so it passed
+// exactly the branches it existed to stop. (It also flagged the one harmless
+// case: a parent merged with a merge commit, whose commits are on the base.)
+//
+// Branches built on top of this one carry its commits too; those are not what
+// it was cut from, so a ref that contains HEAD itself is ignored.
+//
+// A commit that arrived through a merge isn't a stack either. A feature branch's
+// final PR has only merge commits on its first-parent line, and its oldest commit
+// is a piece's, still on that piece's branch: that's the convention below working,
+// so only a commit on this branch's own first-parent line counts.
+//
+// History can't say which of two branches came first. If B was cut from A and A
+// then moved on, each holds a commit the other lacks, so checking A reports B too.
+// The message says "shares" rather than claiming a direction, and names the bypass.
+const own = gitSilent(['rev-list', '--reverse', '--topo-order', `${baseRef}..HEAD`]);
+const first = own?.split('\n')[0];
+if (!first) {
   process.exit(0);
 }
-const trunkSet = new Set(trunk.split('\n'));
-
-if (trunkSet.has(mergeBase)) {
-  // Merge-base is on the first-parent trunk — clean.
+const firstParent = gitSilent(['rev-list', '--first-parent', `${baseRef}..HEAD`]);
+if (!firstParent?.split('\n').includes(first)) {
   process.exit(0);
 }
 
-// The branch's merge-base is NOT on origin/<base>'s first-parent trunk.
-// Try to guess the source branch by finding any non-base ref containing
-// the merge-base.
-function guessSourceBranch() {
-  const refs = gitSilent(['for-each-ref', '--format=%(refname:short)', 'refs/remotes/origin']);
-  if (!refs) return null;
-  for (const ref of refs.split('\n')) {
-    if (ref === baseRef || ref === 'origin/HEAD' || ref === `origin/${head}`) continue;
-    const contains = gitSilent(['branch', '-r', '--contains', mergeBase, '--list', ref]);
-    if (contains) return ref;
-  }
-  return null;
+function sourceBranches() {
+  const refs = gitSilent([
+    'for-each-ref',
+    '--contains',
+    first,
+    '--format=%(refname:short)',
+    'refs/remotes/origin',
+  ]);
+  if (!refs) return [];
+  return refs
+    .split('\n')
+    .filter(Boolean)
+    .filter((ref) => ref !== baseRef && ref !== 'origin/HEAD' && ref !== 'origin')
+    .filter((ref) => ref !== `origin/${head}`)
+    .filter((ref) => {
+      // Built on top of this branch, not underneath it.
+      try {
+        git(['merge-base', '--is-ancestor', 'HEAD', ref]);
+        return false;
+      } catch {
+        return true;
+      }
+    });
 }
 
-const guessed = guessSourceBranch();
+const sources = sourceBranches();
+if (sources.length === 0) {
+  // Every commit ahead of the base is this branch's own.
+  process.exit(0);
+}
+const guessed = sources[0];
 const ahead = gitSilent(['rev-list', '--count', `${baseRef}..HEAD`]) ?? '?';
 const behind = gitSilent(['rev-list', '--count', `HEAD..${baseRef}`]) ?? '?';
 
@@ -120,8 +162,7 @@ const lines = [
   `⚠ branch-base-check: this branch is not based on ${baseRef}`,
   '',
   `  Branch:         ${head}`,
-  `  Merge-base:     ${mergeBase} (NOT on ${baseRef}'s first-parent trunk)`,
-  `  Guessed source: ${guessed ?? '(unknown)'}`,
+  `  Shares with:    ${guessed} (both carry ${first.slice(0, 12)}, this branch's oldest commit)`,
   `  Ahead/behind:   ${ahead} / ${behind} commits`,
   '',
   'Why this matters:',
@@ -134,7 +175,18 @@ const lines = [
   '  2. git cherry-pick <your commits from this branch>',
   '  3. Open the PR from the new branch.',
   '',
-  "To override (only if you're intentionally stacking and have a plan):",
+  'Work that needs several PRs: do not stack PR on PR. Make one feature',
+  `  branch from ${baseRef} (feat/<name>), branch each piece from it, open each`,
+  '  PR INTO it, and open one final PR from feat/<name> to the default branch.',
+  '  Run this check with --base=feat/<name> for the pieces.',
+  '',
+  `If ${guessed} was cut from this branch and this branch then moved on, this`,
+  'is a false alarm: history alone cannot tell which came first.',
+  '',
+  'On a feature branch, this means a piece was fast-forwarded in or a commit was',
+  'made on it directly. Merge pieces with merge commits, or use the override.',
+  '',
+  "To override (a false alarm, or you're intentionally stacking and have a plan):",
   '  ALLOW_STACKED=1 <your command>',
   '',
 ];
