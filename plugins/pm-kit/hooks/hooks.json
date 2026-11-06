@@ -1,5 +1,16 @@
 {
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "mcp__.*[Ll]inear.*__(create_issue|save_issue)",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/linear-theme-guard.mjs\""
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "hooks": [
