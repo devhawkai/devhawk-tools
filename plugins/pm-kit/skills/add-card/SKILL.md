@@ -140,7 +140,8 @@ Validation scales with target section. INBOX is intentionally light — demandin
 | Description (1-2 sentences) | required | required |
 | Source attribution | **required** | required |
 | Feature identifiable (the epic it supports) | optional | required (or explicit "Feature pending") |
-| Priority / Type / Points / Release / Theme | optional (skip — re-evaluate at promotion) | required |
+| Priority / Type / Points / Release | optional (skip — re-evaluate at promotion) | required |
+| Theme | required on a board several projects share, otherwise optional | required |
 
 If any required check fails, ask the user for the missing info before creating.
 
@@ -164,7 +165,7 @@ INBOX cards intentionally skip Priority / Type / Points / Release — these get 
 
 For **Linear**: state → Backlog, priority (default Medium=3), team selected.
 
-For **INBOX cards specifically**: skip Priority / Task Type / Story Points / Release / Sprint / Theme custom-field assignments. Only set Section=INBOX, the `Feature` if known, and the description (with Source line). Lighter creation matches the lighter pre-flight requirements.
+For **INBOX cards specifically**: skip Priority / Task Type / Story Points / Release / Sprint custom-field assignments. **Theme is the exception on a board several projects share:** a card there with no Theme routes to nobody, so set it even in INBOX. A direct board create leaves it empty unless you set it. If you cannot tell which product it is, ask. On a board with one project, skip it. Only set Section=INBOX, the `Feature` if known, and the description (with Source line). Lighter creation matches the lighter pre-flight requirements.
 
 ## Step 5: Create the card
 
